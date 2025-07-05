@@ -1,0 +1,485 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User Management
+model User {
+  id                String   @id @default(cuid())
+  email             String   @unique
+  firebaseUid       String   @unique
+  username          String?  @unique
+  displayName       String?
+  avatar            String?
+  dateOfBirth       DateTime?
+  timezone          String   @default("UTC")
+  preferredLanguage String   @default("en")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Learning preferences
+  learningStyle     LearningStyle @default(VISUAL)
+  difficultyLevel   DifficultyLevel @default(BEGINNER)
+  dailyGoalMinutes  Int       @default(30)
+  
+  // Gamification
+  totalXP           Int       @default(0)
+  currentStreak     Int       @default(0)
+  longestStreak     Int       @default(0)
+  lastActiveDate    DateTime?
+
+  // Relationships
+  profile           UserProfile?
+  enrollments       Enrollment[]
+  progress          Progress[]
+  achievements      UserAchievement[]
+  sessions          LearningSession[]
+  assessments       AssessmentResult[]
+  socialConnections UserConnection[]
+  
+  @@map("users")
+}
+
+model UserProfile {
+  id          String @id @default(cuid())
+  userId      String @unique
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  bio         String?
+  interests   String[] // Array of interest topics
+  goals       String[] // Learning goals
+  occupation  String?
+  education   String?
+  
+  // Privacy settings
+  profileVisibility ProfileVisibility @default(PRIVATE)
+  showProgress      Boolean @default(false)
+  showAchievements  Boolean @default(true)
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("user_profiles")
+}
+
+// Learning Content Structure
+model Subject {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String?
+  icon        String?
+  color       String?
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
+  
+  topics      Topic[]
+  enrollments Enrollment[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("subjects")
+}
+
+model Topic {
+  id          String @id @default(cuid())
+  subjectId   String
+  subject     Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  prerequisites String[] // Array of topic IDs
+  estimatedHours Int @default(1)
+  difficultyLevel DifficultyLevel @default(BEGINNER)
+  isActive    Boolean @default(true)
+  sortOrder   Int     @default(0)
+  
+  modules     Module[]
+  progress    Progress[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("topics")
+}
+
+model Module {
+  id          String @id @default(cuid())
+  topicId     String
+  topic       Topic  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  
+  name        String
+  description String?
+  type        ModuleType
+  content     Json // Flexible content structure
+  estimatedMinutes Int @default(15)
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+  
+  // AI-generated metadata
+  aiGenerated Boolean @default(false)
+  aiPrompt    String?
+  aiModel     String?
+  
+  lessons     Lesson[]
+  progress    Progress[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("modules")
+}
+
+model Lesson {
+  id          String @id @default(cuid())
+  moduleId    String
+  module      Module @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  
+  name        String
+  type        LessonType
+  content     Json // Flexible content structure
+  estimatedMinutes Int @default(5)
+  sortOrder   Int     @default(0)
+  isActive    Boolean @default(true)
+  
+  // Interactive elements
+  hasQuiz     Boolean @default(false)
+  hasExercise Boolean @default(false)
+  hasVideo    Boolean @default(false)
+  
+  progress    Progress[]
+  sessions    LearningSession[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("lessons")
+}
+
+// Learning Progress & Analytics
+model Enrollment {
+  id          String @id @default(cuid())
+  userId      String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  subjectId   String
+  subject     Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  
+  status      EnrollmentStatus @default(ACTIVE)
+  startedAt   DateTime @default(now())
+  completedAt DateTime?
+  
+  // Personalization
+  customGoals String[]
+  targetCompletionDate DateTime?
+  
+  @@unique([userId, subjectId])
+  @@map("enrollments")
+}
+
+model Progress {
+  id          String @id @default(cuid())
+  userId      String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Content references (one of these will be set)
+  topicId     String?
+  topic       Topic?  @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  moduleId    String?
+  module      Module? @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  lessonId    String?
+  lesson      Lesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  
+  status      ProgressStatus @default(NOT_STARTED)
+  completionPercentage Float @default(0)
+  timeSpentMinutes Int @default(0)
+  attemptsCount Int @default(0)
+  
+  // Performance metrics
+  accuracyScore Float?
+  comprehensionScore Float?
+  engagementScore Float?
+  
+  startedAt   DateTime?
+  completedAt DateTime?
+  lastAccessedAt DateTime @default(now())
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("progress")
+}
+
+// Learning Sessions & Analytics
+model LearningSession {
+  id          String @id @default(cuid())
+  userId      String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lessonId    String?
+  lesson      Lesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  startedAt   DateTime @default(now())
+  endedAt     DateTime?
+  durationMinutes Int @default(0)
+
+  // Session metrics
+  interactionCount Int @default(0)
+  correctAnswers Int @default(0)
+  totalAnswers Int @default(0)
+  hintsUsed Int @default(0)
+
+  // AI-generated insights
+  difficultyAdjustment Float? // -1 to 1 scale
+  recommendedNextAction String?
+
+  @@map("learning_sessions")
+}
+
+// Assessment System
+model Assessment {
+  id          String @id @default(cuid())
+  name        String
+  description String?
+  type        AssessmentType
+  subjectId   String?
+  topicId     String?
+
+  questions   Json // Array of question objects
+  timeLimit   Int? // in minutes
+  passingScore Float @default(0.7)
+  maxAttempts Int @default(3)
+
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  results     AssessmentResult[]
+
+  @@map("assessments")
+}
+
+model AssessmentResult {
+  id           String @id @default(cuid())
+  userId       String
+  user         User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assessmentId String
+  assessment   Assessment @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+
+  score        Float
+  maxScore     Float
+  percentage   Float
+  passed       Boolean
+  timeSpent    Int // in minutes
+  attemptNumber Int @default(1)
+
+  answers      Json // Array of answer objects
+  feedback     String?
+
+  completedAt  DateTime @default(now())
+
+  @@map("assessment_results")
+}
+
+// Gamification System
+model Achievement {
+  id          String @id @default(cuid())
+  name        String @unique
+  description String
+  icon        String
+  category    AchievementCategory
+  type        AchievementType
+
+  // Requirements
+  requirements Json // Flexible requirements structure
+  xpReward    Int @default(0)
+  badgeColor  String @default("#3B82F6")
+
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+
+  userAchievements UserAchievement[]
+
+  @@map("achievements")
+}
+
+model UserAchievement {
+  id            String @id @default(cuid())
+  userId        String
+  user          User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  achievementId String
+  achievement   Achievement @relation(fields: [achievementId], references: [id], onDelete: Cascade)
+
+  unlockedAt    DateTime @default(now())
+  progress      Float @default(1.0) // For progressive achievements
+
+  @@unique([userId, achievementId])
+  @@map("user_achievements")
+}
+
+// Social Features
+model UserConnection {
+  id          String @id @default(cuid())
+  userId      String
+  user        User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  friendId    String
+
+  status      ConnectionStatus @default(PENDING)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, friendId])
+  @@map("user_connections")
+}
+
+// AI & Personalization
+model AIInsight {
+  id          String @id @default(cuid())
+  userId      String
+  type        InsightType
+  category    String
+
+  title       String
+  description String
+  data        Json // Flexible data structure
+  confidence  Float // 0-1 confidence score
+
+  isActive    Boolean @default(true)
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+
+  @@map("ai_insights")
+}
+
+model ContentGeneration {
+  id          String @id @default(cuid())
+  type        ContentType
+  prompt      String
+  model       String // AI model used
+
+  input       Json // Input parameters
+  output      Json // Generated content
+  metadata    Json // Generation metadata
+
+  status      GenerationStatus @default(PENDING)
+  quality     Float? // Quality score 0-1
+
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  @@map("content_generations")
+}
+
+// Enums
+enum LearningStyle {
+  VISUAL
+  AUDITORY
+  KINESTHETIC
+  READING_WRITING
+}
+
+enum DifficultyLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+enum ProfileVisibility {
+  PUBLIC
+  FRIENDS_ONLY
+  PRIVATE
+}
+
+enum ModuleType {
+  LESSON
+  QUIZ
+  EXERCISE
+  PROJECT
+  ASSESSMENT
+  VIDEO
+  READING
+}
+
+enum LessonType {
+  TEXT
+  VIDEO
+  INTERACTIVE
+  QUIZ
+  EXERCISE
+  CODE_CHALLENGE
+  DRAG_DROP
+  MULTIPLE_CHOICE
+}
+
+enum EnrollmentStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+  DROPPED
+}
+
+enum ProgressStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  MASTERED
+}
+
+enum AssessmentType {
+  PLACEMENT
+  FORMATIVE
+  SUMMATIVE
+  DIAGNOSTIC
+  FINAL
+}
+
+enum AchievementCategory {
+  PROGRESS
+  STREAK
+  MASTERY
+  SOCIAL
+  SPECIAL
+}
+
+enum AchievementType {
+  MILESTONE
+  PROGRESSIVE
+  RARE
+  SEASONAL
+}
+
+enum ConnectionStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+enum InsightType {
+  LEARNING_PATTERN
+  DIFFICULTY_ADJUSTMENT
+  CONTENT_RECOMMENDATION
+  PERFORMANCE_TREND
+  ENGAGEMENT_ALERT
+}
+
+enum ContentType {
+  LESSON_CONTENT
+  QUIZ_QUESTION
+  EXERCISE
+  EXPLANATION
+  HINT
+  FEEDBACK
+}
+
+enum GenerationStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  FAILED
+}
