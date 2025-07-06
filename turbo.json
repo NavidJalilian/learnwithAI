@@ -6,10 +6,7 @@
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**", "dist/**"]
     },
-    "dev": {
-      "cache": false,
-      "persistent": true
-    },
+    "dev": "bun --cwd apps/web run dev",
     "lint": {
       "dependsOn": ["^build"]
     },
